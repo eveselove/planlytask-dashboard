@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planly Parser — Dashboard</title>
+  <meta name="description" content="Панель управления парсингом строительных магазинов">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/dashboard/css/style.css">
+</head>
+
+<body>
+
+  <!-- ═══════════════════════════════════════════
+     SETUP SCREEN (показывается если нет API настроек)
+     ═══════════════════════════════════════════ -->
+  <div id="setup-screen" class="setup-screen" style="display:none">
+    <div class="setup-card">
+      <div style="text-align:center;font-size:48px;margin-bottom:16px">🔌</div>
+      <h2>Подключение к серверу</h2>
+      <p class="subtitle">Укажите адрес Jetson API и ключ доступа</p>
+
+      <div class="form-group">
+        <label>API URL</label>
+        <input type="text" id="setup-url" placeholder="http://146.120.89.199:5555" value="http://146.120.89.199:5555">
+      </div>
+
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="password" id="setup-key" placeholder="Введите API ключ">
+      </div>
+
+      <button class="btn btn-primary" onclick="saveSetup()">Подключиться</button>
+      <p id="setup-error" style="color:var(--red);font-size:13px;margin-top:12px;text-align:center;display:none"></p>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════
+     MAIN APP
+     ═══════════════════════════════════════════ -->
+  <div id="app" style="display:none;width:100%">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">📦</div>
+        <h1>Planly Parser</h1>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">Данные</div>
+        <div class="nav-item active" data-page="products"><span class="icon">📋</span> Товары</div>
+        <div class="nav-item" data-page="analytics"><span class="icon">📊</span> Аналитика</div>
+        <div class="nav-item" data-page="monitoring"><span class="icon">👁️</span> Мониторинг</div>
+        <div class="nav-item" data-page="matching"><span class="icon">🔗</span> Матчинг</div>
+
+        <div class="nav-section">Парсинг</div>
+        <div class="nav-item" data-page="settings"><span class="icon">⚙️</span> Настройки</div>
+        <div class="nav-item" data-page="rl-dashboard"><span class="icon">🧠</span> RL Dashboard</div>
+        <div class="nav-item" data-page="parser-stats"><span class="icon">📈</span> Статистика</div>
+
+        <div class="nav-section">Система</div>
+        <div class="nav-item" data-page="about"><span class="icon">ℹ️</span> О проекте</div>
+        <div class="nav-item" onclick="resetSetup()"><span class="icon">🔧</span> Настройки API</div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="connection-status">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Подключение...</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Content area -->
+    <main class="main-content">
+
+      <!-- ═══ Products Page ═══ -->
+      <div id="page-products" class="page">
+        <div class="page-header">
+          <div>
+            <h2>Товары</h2>
+            <div class="subtitle" id="products-subtitle">Загрузка...</div>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="stats-grid" id="products-stats"></div>
+          <div class="filters-bar" id="products-filters">
+            <select class="filter-select" id="f-store" onchange="loadProducts()">
+              <option value="">Все магазины</option>
+            </select>
+            <select class="filter-select" id="f-city" onchange="loadProducts()">
+              <option value="">Все города</option>
+            </select>
+            <select class="filter-select" id="f-brand" onchange="loadProducts()">
+              <option value="">Все бренды</option>
+            </select>
+            <select class="filter-select" id="f-dept" onchange="loadProducts()">
+              <option value="">Все категории</option>
+            </select>
+          </div>
+          <div id="products-table"></div>
+          <div id="products-pagination" class="pagination"></div>
+        </div>
+      </div>
+
+      <!-- ═══ Analytics Page ═══ -->
+      <div id="page-analytics" class="page" style="display:none">
+        <div class="page-header">
+          <div>
+            <h2>Аналитика</h2>
+            <div class="subtitle">Остатки в розничных ценах по категориям</div>
+          </div>
+        </div>
+        <div class="page-body" id="analytics-body">
+          <div class="loading">
+            <div class="spinner"></div> Загрузка аналитики...
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Monitoring Page ═══ -->
+      <div id="page-monitoring" class="page" style="display:none">
+        <div class="page-header">
+          <div>
+            <h2>Мониторинг</h2>
+            <div class="subtitle">Сравнение цен конкурентов</div>
+          </div>
+        </div>
+        <div class="page-body" id="monitoring-body">
+          <div class="loading">
+            <div class="spinner"></div> Загрузка мониторинга...
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Matching Page ═══ -->
+      <div id="page-matching" class="page" style="display:none">
+        <div class="page-header">
+          <div>
+            <h2>Матчинг</h2>
+            <div class="subtitle">Сопоставление товаров между магазинами</div>
+          </div>
+        </div>
+        <div class="page-body" id="matching-body">
+          <div class="loading">
+            <div class="spinner"></div> Загрузка матчинга...
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Settings Page ═══ -->
+      <div id="page-settings" class="page" style="display:none">
+        <div class="page-header">
+          <div>
+            <h2>Настройки парсинга</h2>
+            <div class="subtitle">Управление парсерами</div>
+          </div>
+        </div>
+        <div class="page-body" id="settings-body">
+          <div class="loading">
+            <div class="spinner"></div> Загрузка настроек...
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ RL Dashboard ═══ -->
+      <div id="page-rl-dashboard" class="page" style="display:none">
+        <div class="page-header">
+          <div>
+            <h2>🧠 RL Dashboard</h2>
+            <div class="subtitle">Адаптивный контроллер Lemana Pro</div>
+          </div>
+        </div>
+        <div class="page-body" id="rl-body">
+          <div class="loading">
+            <div class="spinner"></div> Загрузка RL данных...
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Parser Stats ═══ -->
+      <div id="page-parser-stats" class="page" style="display:none">
+        <div class="page-header">
+          <div>
+            <h2>Статистика парсинга</h2>
+            <div class="subtitle">История и объёмы загрузок</div>
+          </div>
+        </div>
+        <div class="page-body" id="parser-stats-body">
+          <div class="loading">
+            <div class="spinner"></div> Загрузка статистики...
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ About ═══ -->
+      <div id="page-about" class="page" style="display:none">
+        <div class="page-header">
+          <div>
+            <h2>О проекте</h2>
+            <div class="subtitle">Системная информация</div>
+          </div>
+        </div>
+        <div class="page-body" id="about-body">
+          <div class="loading">
+            <div class="spinner"></div> Загрузка информации...
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/dashboard/js/api.js"></script>
+  <script>
+    // ═══════════════════════════════════════════════
+    // APP CORE — Routing, Setup, Init
+    // ═══════════════════════════════════════════════
+
+    let currentPage = 'products';
+    let currentProductPage = 1;
+    let filtersLoaded = false;
+
+    // === Setup / Config ===
+    function getConfig() {
+      try {
+        return JSON.parse(localStorage.getItem('planly_config') || 'null');
+      } catch { return null; }
+    }
+
+    function saveSetup() {
+      const url = document.getElementById('setup-url').value.trim();
+      const key = document.getElementById('setup-key').value.trim();
+      if (!url || !key) {
+        showSetupError('Заполните оба поля');
+        return;
+      }
+      const config = { url, key };
+      localStorage.setItem('planly_config', JSON.stringify(config));
+      initApp(config);
+    }
+
+    function resetSetup() {
+      localStorage.removeItem('planly_config');
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('setup-screen').style.display = 'flex';
+    }
+
+    function showSetupError(msg) {
+      const el = document.getElementById('setup-error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    // === Toast ===
+    function toast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.innerHTML = `<span>${type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️'}</span> ${message}`;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    // === Navigation ===
+    function navigateTo(page) {
+      currentPage = page;
+      document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+      const pageEl = document.getElementById(`page-${page}`);
+      const navEl = document.querySelector(`.nav-item[data-page="${page}"]`);
+      if (pageEl) pageEl.style.display = 'block';
+      if (navEl) navEl.classList.add('active');
+
+      // Load page data
+      switch (page) {
+        case 'products': loadProducts(); break;
+        case 'analytics': loadAnalytics(); break;
+        case 'monitoring': loadMonitoring(); break;
+        case 'matching': loadMatching(); break;
+        case 'settings': loadSettings(); break;
+        case 'rl-dashboard': loadRLDashboard(); break;
+        case 'parser-stats': loadParserStats(); break;
+        case 'about': loadAbout(); break;
+      }
+
+      window.location.hash = page;
+    }
+
+    // Setup navigation clicks
+    document.querySelectorAll('.nav-item[data-page]').forEach(item => {
+      item.addEventListener('click', () => navigateTo(item.dataset.page));
+    });
+
+    // === Formatters ===
+    function fmtPrice(price) {
+      if (!price && price !== 0) return '—';
+      return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(price);
+    }
+
+    function fmtNumber(n) {
+      if (!n && n !== 0) return '—';
+      return new Intl.NumberFormat('ru-RU').format(n);
+    }
+
+    function fmtDate(d) {
+      if (!d) return '—';
+      try {
+        const dt = new Date(d);
+        return dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+      } catch { return d; }
+    }
+
+    // ═══════════════════════════════════════════════
+    // PRODUCTS PAGE
+    // ═══════════════════════════════════════════════
+
+    async function loadFilters() {
+      if (filtersLoaded) return;
+      try {
+        const store = document.getElementById('f-store').value;
+        const data = await API.getFilters({ store });
+
+        fillSelect('f-store', data.stores || [], 'Все магазины');
+        fillSelect('f-city', data.cities || [], 'Все города');
+        fillSelect('f-brand', (data.brands || []).slice(0, 100), 'Все бренды');
+        fillSelect('f-dept', data.departments || [], 'Все категории');
+        filtersLoaded = true;
+      } catch (err) {
+        console.error('Filters error:', err);
+      }
+    }
+
+    function fillSelect(id, items, defaultText) {
+      const sel = document.getElementById(id);
+      const currentVal = sel.value;
+      sel.innerHTML = `<option value="">${defaultText}</option>`;
+      items.forEach(item => {
+        const val = typeof item === 'object' ? item.value || item.name : item;
+        const label = typeof item === 'object' ? item.name || item.label || item.value : item;
+        sel.innerHTML += `<option value="${val}">${label}</option>`;
+      });
+      sel.value = currentVal;
+    }
+
+    async function loadProducts(page) {
+      if (page) currentProductPage = page;
+
+      if (!filtersLoaded) await loadFilters();
+
+      const params = {
+        page: currentProductPage,
+        per_page: 50,
+      };
+      const store = document.getElementById('f-store').value;
+      const city = document.getElementById('f-city').value;
+      const brand = document.getElementById('f-brand').value;
+      const dept = document.getElementById('f-dept').value;
+
+      if (store) params.store = store;
+      if (city) params.city = city;
+      if (brand) params.brand = brand;
+      if (dept) params.department = dept;
+
+      try {
+        const data = await API.getProducts(params);
+        renderProducts(data);
+        document.getElementById('products-subtitle').textContent =
+          `${fmtNumber(data.total)} товаров • Стр. ${data.page}/${data.pages || 1}`;
+      } catch (err) {
+        document.getElementById('products-table').innerHTML =
+          `<div class="empty-state"><div class="icon">❌</div><h3>Ошибка загрузки</h3><p>${err.message}</p></div>`;
+      }
+    }
+
+    function renderProducts(data) {
+      const products = data.products || [];
+      if (!products.length) {
+        document.getElementById('products-table').innerHTML =
+          '<div class="empty-state"><div class="icon">📦</div><h3>Нет товаров</h3><p>Измените фильтры</p></div>';
+        document.getElementById('products-pagination').innerHTML = '';
+        return;
+      }
+
+      let html = '<div class="table-container"><table><thead><tr>';
+      html += '<th></th><th>Название</th><th>Магазин</th><th>Город</th>';
+      html += '<th>Цена</th><th>Остаток</th><th>Обновлено</th>';
+      html += '</tr></thead><tbody>';
+
+      for (const p of products) {
+        const photo = p.photo_main
+          ? `<img src="${p.photo_main}" class="product-photo" loading="lazy" onerror="this.style.display='none'">`
+          : '<div class="product-photo" style="background:var(--bg-secondary)"></div>';
+
+        const priceOld = p.current_price_old
+          ? `<span class="price-old">${fmtPrice(p.current_price_old)}</span>` : '';
+
+        const stock = p.current_stock || 0;
+        const stockBadge = stock > 10
+          ? `<span class="badge badge-green">${stock}</span>`
+          : stock > 0
+            ? `<span class="badge badge-yellow">${stock}</span>`
+            : `<span class="badge badge-red">0</span>`;
+
+        const url = p.url ? `<a href="${p.url}" target="_blank" style="color:var(--text-primary)">${p.name || '—'}</a>` : (p.name || '—');
+
+        html += `<tr>
+      <td>${photo}</td>
+      <td><div class="product-name">${url}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${p.brand || ''} • ${p.sku || ''}</div></td>
+      <td><span class="badge badge-blue">${p.store || '—'}</span></td>
+      <td style="font-size:13px;color:var(--text-secondary)">${p.city_name || '—'}</td>
+      <td><span class="price">${fmtPrice(p.current_price)}</span>${priceOld}</td>
+      <td>${stockBadge}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtDate(p.last_updated)}</td>
+    </tr>`;
+      }
+
+      html += '</tbody></table></div>';
+      document.getElementById('products-table').innerHTML = html;
+
+      // Pagination
+      renderPagination(data.page, data.pages, 'products');
+    }
+
+    function renderPagination(page, pages, target) {
+      if (!pages || pages <= 1) {
+        document.getElementById(`${target}-pagination`).innerHTML = '';
+        return;
+      }
+
+      let html = `<button ${page <= 1 ? 'disabled' : ''} onclick="loadProducts(${page - 1})">← Назад</button>`;
+      html += `<span class="page-info">Стр. ${page} из ${pages}</span>`;
+      html += `<button ${page >= pages ? 'disabled' : ''} onclick="loadProducts(${page + 1})">Вперёд →</button>`;
+      document.getElementById(`${target}-pagination`).innerHTML = html;
+    }
+
+    // ═══════════════════════════════════════════════
+    // ANALYTICS
+    // ═══════════════════════════════════════════════
+
+    async function loadAnalytics() {
+      const body = document.getElementById('analytics-body');
+      body.innerHTML = '<div class="loading"><div class="spinner"></div> Загрузка аналитики...</div>';
+
+      try {
+        const data = await API.getAnalytics();
+        let html = '<div class="stats-grid">';
+        for (const [store, totals] of Object.entries(data.totals || {})) {
+          html += `<div class="stat-card">
+        <span class="stat-label">${store}</span>
+        <span class="stat-value">${fmtNumber(totals.sku_count)}</span>
+        <span class="stat-change">SKU • ${fmtPrice(totals.stock_value)} на складе</span>
+      </div>`;
+        }
+        html += '</div>';
+
+        // Table by department
+        html += '<div class="card"><div class="card-header"><span class="card-title">По категориям</span></div>';
+        html += '<div class="table-container"><table><thead><tr><th>Категория</th><th>Магазин</th><th>SKU</th><th>Сумма остатков</th></tr></thead><tbody>';
+        for (const r of (data.data || []).slice(0, 100)) {
+          html += `<tr><td>${r.department}</td><td>${r.store}</td><td>${fmtNumber(r.sku_count)}</td><td>${fmtPrice(r.stock_value)}</td></tr>`;
+        }
+        html += '</tbody></table></div></div>';
+        body.innerHTML = html;
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Ошибка</h3><p>${err.message}</p></div>`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // MONITORING (Matching saved results)
+    // ═══════════════════════════════════════════════
+
+    async function loadMonitoring() {
+      const body = document.getElementById('monitoring-body');
+      body.innerHTML = '<div class="loading"><div class="spinner"></div> Загрузка мониторинга...</div>';
+
+      try {
+        const data = await API.getMatchSaved();
+        if (!data.results || !data.results.length) {
+          body.innerHTML = '<div class="empty-state"><div class="icon">👁️</div><h3>Нет данных мониторинга</h3></div>';
+          return;
+        }
+
+        let html = `<div class="stats-grid"><div class="stat-card"><span class="stat-label">Сопоставлено</span><span class="stat-value">${data.total}</span></div></div>`;
+        html += '<div class="table-container"><table><thead><tr><th>Конкурент</th><th>Название</th><th>Цена конк.</th><th>Аксон</th><th>Цена Аксон</th><th>Score</th></tr></thead><tbody>';
+
+        for (const r of data.results.slice(0, 100)) {
+          const scoreColor = r.best_match_score > 0.8 ? 'green' : r.best_match_score > 0.5 ? 'yellow' : 'red';
+          html += `<tr>
+        <td><span class="badge badge-blue">${r.source_store}</span></td>
+        <td class="product-name">${r.source_name}</td>
+        <td class="price">${fmtPrice(r.source_price)}</td>
+        <td class="product-name">${r.best_match_name}</td>
+        <td class="price">${fmtPrice(r.best_match_price)}</td>
+        <td><span class="badge badge-${scoreColor}">${(r.best_match_score * 100).toFixed(0)}%</span></td>
+      </tr>`;
+        }
+        html += '</tbody></table></div>';
+        body.innerHTML = html;
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Ошибка</h3><p>${err.message}</p></div>`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // MATCHING
+    // ═══════════════════════════════════════════════
+
+    async function loadMatching() {
+      const body = document.getElementById('matching-body');
+      body.innerHTML = '<div class="loading"><div class="spinner"></div> Загрузка матчинга...</div>';
+
+      try {
+        const data = await API.getMatching({ per_page: 100 });
+        let html = `<div class="stats-grid">
+      <div class="stat-card"><span class="stat-label">Совпадений</span><span class="stat-value">${fmtNumber(data.total_matched)}</span></div>
+      <div class="stat-card"><span class="stat-label">Всего товаров</span><span class="stat-value">${fmtNumber(data.total_products)}</span></div>
+      <div class="stat-card"><span class="stat-label">Без пары</span><span class="stat-value">${fmtNumber(data.unmatched)}</span></div>
+    </div>`;
+
+        html += '<div class="table-container"><table><thead><tr><th>Товар</th><th>Магазин 1</th><th>Цена 1</th><th>Магазин 2</th><th>Цена 2</th><th>Разница</th></tr></thead><tbody>';
+        for (const m of (data.matches || [])) {
+          const diffClass = m.diff > 0 ? 'badge-red' : m.diff < 0 ? 'badge-green' : 'badge-blue';
+          html += `<tr>
+        <td class="product-name">${m.name}</td>
+        <td><span class="badge badge-blue">${m.store1}</span></td>
+        <td class="price">${fmtPrice(m.price1)}</td>
+        <td><span class="badge badge-blue">${m.store2}</span></td>
+        <td class="price">${fmtPrice(m.price2)}</td>
+        <td><span class="badge ${diffClass}">${m.diff > 0 ? '+' : ''}${fmtPrice(m.diff)} (${m.diff_pct}%)</span></td>
+      </tr>`;
+        }
+        html += '</tbody></table></div>';
+        body.innerHTML = html;
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Ошибка</h3><p>${err.message}</p></div>`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // SETTINGS
+    // ═══════════════════════════════════════════════
+
+    async function loadSettings() {
+      const body = document.getElementById('settings-body');
+      body.innerHTML = '<div class="loading"><div class="spinner"></div> Загрузка настроек...</div>';
+
+      try {
+        const [config, parseStatus, aksonStatus, strlStatus, settings] = await Promise.all([
+          API.getConfig(),
+          API.getParseStatus().catch(() => ({ running: false })),
+          API.getAksonParseStatus().catch(() => ({ running: false })),
+          API.getStrlParseStatus().catch(() => ({ running: false })),
+          API.getParserSettings().catch(() => ({})),
+        ]);
+
+        let html = '<div class="stats-grid">';
+
+        // Lemana status
+        const lemanaRunning = parseStatus.running;
+        html += `<div class="stat-card">
+      <span class="stat-label">ЛеманаПро</span>
+      <span class="stat-value">${lemanaRunning ? '🟢 Работает' : '⚪ Остановлен'}</span>
+      <div style="margin-top:8px">
+        ${lemanaRunning
+            ? '<button class="btn btn-danger btn-sm" onclick="stopParser(\'lemana\')">⏹ Стоп</button>'
+            : '<button class="btn btn-success btn-sm" onclick="startParser(\'lemana\')">▶ Запуск</button>'}
+      </div>
+    </div>`;
+
+        // Akson status
+        const aksonRunning = aksonStatus.running;
+        html += `<div class="stat-card">
+      <span class="stat-label">Аксон</span>
+      <span class="stat-value">${aksonRunning ? '🟢 Работает' : '⚪ Остановлен'}</span>
+      <div style="margin-top:8px">
+        ${aksonRunning
+            ? '<button class="btn btn-danger btn-sm" onclick="stopParser(\'akson\')">⏹ Стоп</button>'
+            : '<button class="btn btn-success btn-sm" onclick="startParser(\'akson\')">▶ Запуск</button>'}
+      </div>
+    </div>`;
+
+        // Stroylandia status
+        const strlRunning = strlStatus.running;
+        html += `<div class="stat-card">
+      <span class="stat-label">Стройландия</span>
+      <span class="stat-value">${strlRunning ? '🟢 Работает' : '⚪ Остановлен'}</span>
+      <div style="margin-top:8px">
+        ${strlRunning
+            ? '<button class="btn btn-danger btn-sm" onclick="stopParser(\'stroylandia\')">⏹ Стоп</button>'
+            : '<button class="btn btn-success btn-sm" onclick="startParser(\'stroylandia\')">▶ Запуск</button>'}
+      </div>
+    </div>`;
+        html += '</div>';
+
+        // Parser log
+        const log = parseStatus.log || aksonStatus.log || [];
+        if (log.length) {
+          html += '<div class="card"><div class="card-header"><span class="card-title">Лог парсинга</span></div>';
+          html += `<pre style="background:var(--bg-primary);padding:16px;border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary);max-height:400px;overflow-y:auto;font-family:var(--font-mono)">${log.slice(-50).join('\n')}</pre></div>`;
+        }
+
+        body.innerHTML = html;
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Ошибка</h3><p>${err.message}</p></div>`;
+      }
+    }
+
+    async function startParser(store) {
+      try {
+        if (store === 'lemana') await API.startParse({});
+        else if (store === 'akson') await API.startAksonParse({});
+        else if (store === 'stroylandia') await API.startStrlParse({});
+        toast(`Парсер ${store} запущен`, 'success');
+        setTimeout(() => loadSettings(), 1000);
+      } catch (err) {
+        toast(`Ошибка запуска: ${err.message}`, 'error');
+      }
+    }
+
+    async function stopParser(store) {
+      try {
+        if (store === 'lemana') await API.stopParse();
+        else if (store === 'akson') await API.stopAksonParse();
+        toast(`Парсер ${store} остановлен`, 'success');
+        setTimeout(() => loadSettings(), 1000);
+      } catch (err) {
+        toast(`Ошибка остановки: ${err.message}`, 'error');
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // RL DASHBOARD
+    // ═══════════════════════════════════════════════
+
+    async function loadRLDashboard() {
+      const body = document.getElementById('rl-body');
+      body.innerHTML = '<div class="loading"><div class="spinner"></div> Загрузка RL данных...</div>';
+
+      try {
+        const data = await API.getRLDashboard();
+        let html = '<div class="stats-grid">';
+        html += `<div class="stat-card"><span class="stat-label">Лучший RPS</span><span class="stat-value">${data.best_rps?.toFixed(1) || 0}</span></div>`;
+        html += `<div class="stat-card"><span class="stat-label">Epsilon (ε)</span><span class="stat-value">${data.epsilon?.toFixed(3) || 0}</span></div>`;
+        html += `<div class="stat-card"><span class="stat-label">Q States</span><span class="stat-value">${fmtNumber((data.q_states_a || 0) + (data.q_states_b || 0))}</span></div>`;
+        html += `<div class="stat-card"><span class="stat-label">Clean Streak</span><span class="stat-value">${data.clean_streak || 0}</span></div>`;
+        html += '</div>';
+
+        // Params
+        if (data.params && Object.keys(data.params).length) {
+          html += '<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">Текущие параметры</span></div>';
+          html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">';
+          for (const [k, v] of Object.entries(data.params)) {
+            html += `<div style="padding:10px;background:var(--bg-primary);border-radius:var(--radius-sm)">
+          <div style="font-size:11px;color:var(--text-muted)">${k}</div>
+          <div style="font-size:16px;font-weight:600">${v}</div>
+        </div>`;
+          }
+          html += '</div></div>';
+        }
+
+        body.innerHTML = html;
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Ошибка</h3><p>${err.message}</p></div>`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // PARSER STATS
+    // ═══════════════════════════════════════════════
+
+    async function loadParserStats() {
+      const body = document.getElementById('parser-stats-body');
+      body.innerHTML = '<div class="loading"><div class="spinner"></div> Загрузка статистики...</div>';
+
+      try {
+        const data = await API.getParserStatsData();
+        if (!data || !data.length) {
+          body.innerHTML = '<div class="empty-state"><div class="icon">📈</div><h3>Нет данных</h3></div>';
+          return;
+        }
+        let html = '<div class="table-container"><table><thead><tr><th>Дата</th><th>Магазин</th><th>SKU</th><th>МБ</th></tr></thead><tbody>';
+        for (const r of data.slice(-50).reverse()) {
+          html += `<tr><td>${r.date || '—'}</td><td>${r.store || '—'}</td><td>${fmtNumber(r.sku_count)}</td><td>${(r.size_mb || 0).toFixed(1)}</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+        body.innerHTML = html;
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Ошибка</h3><p>${err.message}</p></div>`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // ABOUT
+    // ═══════════════════════════════════════════════
+
+    async function loadAbout() {
+      const body = document.getElementById('about-body');
+      body.innerHTML = '<div class="loading"><div class="spinner"></div> Загрузка...</div>';
+
+      try {
+        const stats = await API.getStats();
+        let html = '<div class="stats-grid">';
+        html += `<div class="stat-card"><span class="stat-label">Всего SKU</span><span class="stat-value">${fmtNumber(stats.total_products || 0)}</span></div>`;
+        html += `<div class="stat-card"><span class="stat-label">Магазинов</span><span class="stat-value">${stats.stores_count || 0}</span></div>`;
+        html += `<div class="stat-card"><span class="stat-label">Городов</span><span class="stat-value">${stats.cities_count || 0}</span></div>`;
+        html += '</div>';
+
+        const config = getConfig();
+        html += `<div class="card"><div class="card-header"><span class="card-title">Подключение</span></div>
+      <div style="font-size:13px;color:var(--text-secondary)">
+        <p>API: <code style="color:var(--accent)">${config?.url || '—'}</code></p>
+        <p style="margin-top:8px">Версия: Planly Parser Dashboard v1.0</p>
+      </div>
+    </div>`;
+        body.innerHTML = html;
+      } catch (err) {
+        body.innerHTML = `<div class="empty-state"><div class="icon">❌</div><h3>Ошибка</h3><p>${err.message}</p></div>`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════
+
+    async function initApp(config) {
+      API.init(config.url, config.key);
+
+      // Test connection
+      try {
+        const stats = await API.getStats();
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'flex';
+        document.getElementById('status-dot').className = 'status-dot online';
+        document.getElementById('status-text').textContent = `${fmtNumber(stats.total_products || 0)} SKU`;
+        toast('Подключено к серверу', 'success');
+
+        // Navigate
+        const hash = window.location.hash.replace('#', '') || 'products';
+        navigateTo(hash);
+      } catch (err) {
+        showSetupError(`Ошибка подключения: ${err.message}`);
+        document.getElementById('setup-screen').style.display = 'flex';
+        document.getElementById('app').style.display = 'none';
+      }
+    }
+
+    // Boot
+    const savedConfig = getConfig();
+    if (savedConfig && savedConfig.url && savedConfig.key) {
+      initApp(savedConfig);
+    } else {
+      document.getElementById('setup-screen').style.display = 'flex';
+    }
+  </script>
+</body>
+
+</html>
